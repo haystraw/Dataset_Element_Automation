@@ -1,0 +1,11 @@
+Business Dataset Name,Resource,Technical Dataset,Technical Element,Require Business Name,Require Associated Glossary,Action,Source Data Set Lineage,Target Data Set Lineage
+NSEN User Data,NSEN Retail Rewards/orcl/NSEN/,NS_RWD_.*,.*,Y,N,,,
+Snowflake Marketing User Data,NSEN Snowflake Retail Marketing,NS_MKTG_ADDR,.*,Y,N,,,
+Snowflake Marketing User Data,NSEN Snowflake Retail Marketing,NS_MKTG_PROD,.*,Y,N,,,
+Snowflake Marketing User Data,NSEN Snowflake Retail Marketing,NS_MKTG_TRANS,.*,Y,N,,,
+Snowflake Marketing User Data,NSEN Snowflake Retail Marketing,NS_MKTG_USER,.*,Y,N,,,
+Databricks DW Marketing User Data,Azure Databricks,ns_mktg_.*,.*,Y,N,,,
+Marketing System User Data,NSEN Retail Marketing,^.*(?<!_HIST)$,.*,Y,N,,,
+,,,,,,,NSEN User Data,Snowflake Marketing User Data
+,,,,,,,Snowflake Marketing User Data,Databricks DW Marketing User Data
+,,,,,,,NSEN User Data,Marketing System User Data
