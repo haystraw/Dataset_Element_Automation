@@ -5,36 +5,48 @@ import requests
 import getpass
 import sys
 import re
+import configparser
 from string import Template
 
-version = 20241111
-
+version = 20241202
+print(f"INFO: update_dataset {version}")
 '''
-pip install requests
+pip install requests configparser
 
-You can also set your defaults in:
-~/.informatica_cdgc/credentials.json
-Example:
-{
-    "default_pod": "dm-us",
-    "default_user": "shayes_infa",
-    "default_pwd": "1234"        
-}
+You can create a credentials file in ~/.informatica_cdgc
+If it finds a default, it'll use it.
+Otherwise it'll prompt for which profile to use.
+format example:
+[default]
+pod = dmp-us
+user = shayes_example
+pwd = xyz
 
+[shayes_compass]
+pod = dmp-us
+user = shayes_compass
+pwd = abc
+
+[reinvent]
+pod = dm-us
+user = reinvent01
+pwd = zyx
 '''
+script_location = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__))
 
 
-default_pod="dm-us"        
-default_user="shayes_infa"
-default_pwd="1234"
+default_pod=""        
+default_user=""
+default_pwd=""
 
 
 prompt_for_login_info = True
 pause_before_loading = True
 show_raw_errors = False
+pause_when_complete = True
 
-default_config_file = './config.csv'
-extracts_folder = './data'
+default_config_file = ''
+extracts_folder = f'{script_location}/data'
 
 searches = [
     {
@@ -216,29 +228,123 @@ publish_data = [
 
 ]
 
+def select_recent_csv(directory):
+    """
+    Lists CSV files in a given directory, sorted by most recent modification time,
+    prompts the user to select one, and returns the path for the selected file.
+
+    Args:
+        directory (str): The directory to search for CSV files.
+
+    Returns:
+        str: The full path of the selected CSV file, or None if no valid file is selected.
+    """
+    # Expand user directory if ~ is used
+    directory = os.path.expanduser(directory)
+
+    # Check if the directory exists
+    if not os.path.isdir(directory):
+        print(f"Directory not found: {directory}")
+        return None
+
+    # List all CSV files in the directory
+    csv_files = [
+        os.path.join(directory, file)
+        for file in os.listdir(directory)
+        if file.endswith('.csv')
+    ]
+
+    # Check if any CSV files were found
+    if not csv_files:
+        print(f"No CSV files found in the directory: {directory}")
+        return None
+
+    # Sort the files by modification time (most recent first)
+    csv_files.sort(key=os.path.getmtime, reverse=True)
+
+    # Display the files to the user with their modification times
+    print("Select a CSV file:")
+    for i, file in enumerate(csv_files, start=1):
+        ## mod_time = datetime.datetime.fromtimestamp(os.path.getmtime(file))
+        print(f"    {i}. {os.path.basename(file)}")
+
+    # Prompt the user to select a file
+    while True:
+        try:
+            choice = int(input(f"Enter the number of the file to select (1-{len(csv_files)}): "))
+            if 1 <= choice <= len(csv_files):
+                selected_file = csv_files[choice - 1]
+                return selected_file
+            else:
+                print(f"Invalid choice. Please select a number between 1 and {len(csv_files)}.")
+        except ValueError:
+            print("Invalid input. Please enter a number.")
+
+
 def load_credentials_from_home():
     global default_user, default_pwd, default_pod
-    
-    # Define the path to the credentials file in the user's home directory
-    credentials_path = os.path.join(os.path.expanduser("~"), ".informatica_cdgc", "credentials.json")
-    
-    # Check if the file exists
-    if os.path.exists(credentials_path):
-        with open(credentials_path, 'r') as file:
+
+    def get_informatica_credentials():
+        credentials_path = os.path.join(os.path.expanduser("~"), ".informatica_cdgc", "credentials")
+        if not os.path.exists(credentials_path):
+            print(f"Credentials file not found: {credentials_path}")
+            return None
+
+        config = configparser.ConfigParser()
+        config.read(credentials_path)
+
+        if "default" in config:
+            return dict(config["default"])
+
+        # If no default section, list available profiles and prompt user to select one
+        profiles = config.sections()
+        if not profiles:
+            return None
+
+        print("INFO: No 'default' profile found. Please select a profile:")
+        for i, profile in enumerate(profiles, start=1):
+            print(f"    {i}. {profile}")
+
+        # Prompt user for selection
+        while True:
             try:
-                # Load the JSON data
-                credentials = json.load(file)
-                
-                # Set each credential individually if it exists in the file
-                if 'default_user' in credentials:
-                    default_user = credentials['default_user']
-                if 'default_pwd' in credentials:
-                    default_pwd = credentials['default_pwd']
-                if 'default_pod' in credentials:
-                    default_pod = credentials['default_pod']
-                
-            except json.JSONDecodeError:
-                pass
+                choice = int(input("Enter the number of the profile to use: "))
+                if 1 <= choice <= len(profiles):
+                    selected_profile = profiles[choice - 1]
+                    print(f"Using credentials from the '{selected_profile}' profile.")
+                    return dict(config[selected_profile])
+                else:
+                    print(f"INFO: Invalid choice. Please select a number between 1 and {len(profiles)}.")
+            except ValueError:
+                print("INFO: Invalid input. Please enter a valid number.")
+
+    if len(default_user) < 1 or len(default_pwd) < 1 or len(default_pod) < 1:
+        credentials_dict = get_informatica_credentials()
+        if credentials_dict:
+            default_user = credentials_dict.get('user')
+            default_pwd = credentials_dict.get('pwd')
+            default_pod = credentials_dict.get('pod')
+        else:
+            # Define the path to the credentials file in the user's home directory
+            credentials_path = os.path.join(os.path.expanduser("~"), ".informatica_cdgc", "credentials.json")
+            
+            # Check if the file exists
+            if os.path.exists(credentials_path):
+                with open(credentials_path, 'r') as file:
+                    try:
+                        # Load the JSON data
+                        credentials = json.load(file)
+                        
+                        # Set each credential individually if it exists in the file
+                        if 'default_user' in credentials:
+                            default_user = credentials['default_user']
+                        if 'default_pwd' in credentials:
+                            default_pwd = credentials['default_pwd']
+                        if 'default_pod' in credentials:
+                            default_pod = credentials['default_pod']
+                        
+                    except json.JSONDecodeError:
+                        pass
 
 def process_json_error(text):
     result_text = text
@@ -642,13 +748,21 @@ def read_config_and_begin(to_delete=False):
                 
 
             
+def main():
+    global default_config_file, script_location
 
-if len(sys.argv) > 1:
-    default_config_file = sys.argv[1]
+    if len(sys.argv) > 1:
+        default_config_file = sys.argv[1]
+    else:
+        default_config_file = select_recent_csv(script_location)
 
-load_credentials_from_home()
-read_config_and_begin()
+    load_credentials_from_home()
+    read_config_and_begin()
+    if pause_when_complete:
+        input(f"Press Any Key to exit ...")    
 
+if __name__ == "__main__":
+    main()
 
 
 
